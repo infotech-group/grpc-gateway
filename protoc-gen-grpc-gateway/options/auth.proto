@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+import "google/protobuf/descriptor.proto";
+
+package grpc.gateway;
+
+option go_package = "github.com/infotech-group/grpc-gateway/protoc-gen-grpc-gateway/options";
+
+extend google.protobuf.MethodOptions {
+    bool is_auth_required = 50001;
+}

@@ -7,7 +7,8 @@ import (
 	"github.com/golang/glog"
 	"github.com/golang/protobuf/proto"
 	descriptor "github.com/golang/protobuf/protoc-gen-go/descriptor"
-	"github.com/grpc-ecosystem/grpc-gateway/protoc-gen-grpc-gateway/httprule"
+	"github.com/infotech-group/grpc-gateway/protoc-gen-grpc-gateway/httprule"
+	authoption "github.com/infotech-group/grpc-gateway/protoc-gen-grpc-gateway/options"
 	options "google.golang.org/genproto/googleapis/api/annotations"
 )
 
@@ -33,7 +34,14 @@ func (r *Registry) loadServices(file *File) error {
 			if opts == nil {
 				glog.V(1).Infof("Found non-target method: %s.%s", svc.GetName(), md.GetName())
 			}
-			meth, err := r.newMethod(svc, md, opts)
+
+			isAuthRequired, err := extractIsAuthRequiredOption(md)
+			if err != nil {
+				glog.Errorf("Failed to extract IsAuthRequiredOption from %s.%s: %v", svc.GetName(), md.GetName(), err)
+				return err
+			}
+
+			meth, err := r.newMethod(svc, md, opts, isAuthRequired)
 			if err != nil {
 				return err
 			}
@@ -49,7 +57,7 @@ func (r *Registry) loadServices(file *File) error {
 	return nil
 }
 
-func (r *Registry) newMethod(svc *Service, md *descriptor.MethodDescriptorProto, opts *options.HttpRule) (*Method, error) {
+func (r *Registry) newMethod(svc *Service, md *descriptor.MethodDescriptorProto, opts *options.HttpRule, isAuthRequired bool) (*Method, error) {
 	requestType, err := r.LookupMsg(svc.File.GetPackage(), md.GetInputType())
 	if err != nil {
 		return nil, err
@@ -63,6 +71,7 @@ func (r *Registry) newMethod(svc *Service, md *descriptor.MethodDescriptorProto,
 		MethodDescriptorProto: md,
 		RequestType:           requestType,
 		ResponseType:          responseType,
+		IsAuthRequired:        isAuthRequired,
 	}
 
 	newBinding := func(opts *options.HttpRule, idx int) (*Binding, error) {
@@ -161,6 +170,24 @@ func (r *Registry) newMethod(svc *Service, md *descriptor.MethodDescriptorProto,
 	}
 
 	return meth, nil
+}
+
+func extractIsAuthRequiredOption(meth *descriptor.MethodDescriptorProto) (bool, error) {
+	if meth.Options == nil {
+		return false, nil
+	}
+	if !proto.HasExtension(meth.Options, authoption.E_IsAuthRequired) {
+		return false, nil
+	}
+	ext, err := proto.GetExtension(meth.Options, authoption.E_IsAuthRequired)
+	if err != nil {
+		return false, nil
+	}
+	isAuthRequired, ok := ext.(*bool)
+	if !ok {
+		return false, fmt.Errorf("extension is %T; want a bool", ext)
+	}
+	return *isAuthRequired, nil
 }
 
 func extractAPIOptions(meth *descriptor.MethodDescriptorProto) (*options.HttpRule, error) {
