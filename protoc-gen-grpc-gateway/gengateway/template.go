@@ -367,26 +367,23 @@ func Register{{$svc.GetName}}HandlerClient(ctx context.Context, mux *runtime.Ser
 			}(ctx.Done(), cn.CloseNotify())
 		}
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
+	{{- if $m.IsAuthRequired }}
+		// check the session
+		authCtx, err := authHandler.CheckAuth(ctx, req)
+		if err != nil {
+			authHandler.SetHTTPError(ctx, w, req, err)
+			return
+		}
+		rctx, err := runtime.AnnotateContext(authCtx, mux, req)
+	{{- else }}
 		rctx, err := runtime.AnnotateContext(ctx, mux, req)
+	{{- end }}
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
 		}
 
-	{{- if $m.IsAuthRequired }}
-
-		// check the session
-		authCtx, err := authHandler.CheckAuth(rctx, req)
-		if err != nil {
-			authHandler.SetHTTPError(rctx, w, req, err)
-			return
-		}
-
-		resp, md, err := request_{{$svc.GetName}}_{{$m.GetName}}_{{$b.Index}}(authCtx, inboundMarshaler, client, req, pathParams)
-	{{- else }}
 		resp, md, err := request_{{$svc.GetName}}_{{$m.GetName}}_{{$b.Index}}(rctx, inboundMarshaler, client, req, pathParams)
-	{{- end }}
-
 		ctx = runtime.NewServerMetadataContext(ctx, md)
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
